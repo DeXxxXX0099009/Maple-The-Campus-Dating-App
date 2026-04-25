@@ -39,9 +39,8 @@ export default function HomePage() {
     setLoading(true)
     try {
       const { data, error: dbError } = await supabase
-        .from('users').select('id, name, email_verified').eq('email', form.email).single()
+        .from('users').select('id, name').eq('email', form.email).single()
       if (dbError || !data) { setError("We couldn't find that email. Sign up first."); return }
-      if (!data.email_verified) { setError('Please verify your email first — check your inbox.'); return }
       localStorage.setItem('anlan_user_id', data.id)
       localStorage.setItem('anlan_user_name', data.name)
       router.push('/feed')
@@ -60,10 +59,6 @@ export default function HomePage() {
       setError('Please fill in all required fields')
       return
     }
-    if (!isStudentEmail(form.email)) {
-      setError('Please use your university email (e.g. .edu, .ac.uk)')
-      return
-    }
     setLoading(true)
     try {
       const { data, error: dbError } = await supabase
@@ -72,7 +67,7 @@ export default function HomePage() {
           name: form.name, email: form.email, gender: form.gender,
           want_to_date: form.want_to_date, phone: form.phone,
           schedule_text: form.schedule_text || null, campus: form.campus,
-          email_verified: false,
+          email_verified: true,
         })
         .select('id').single()
       if (dbError) {
@@ -80,13 +75,9 @@ export default function HomePage() {
         else setError('Sign up failed. Try again.')
         return
       }
-      // Send verification email
-      await fetch('/api/verify-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: data.id, email: form.email, name: form.name }),
-      })
-      setEmailSent(true)
+      localStorage.setItem('anlan_user_id', data.id)
+      localStorage.setItem('anlan_user_name', form.name)
+      router.push('/feed')
     } catch { setError('Network error. Check your connection.') }
     finally { setLoading(false) }
   }
