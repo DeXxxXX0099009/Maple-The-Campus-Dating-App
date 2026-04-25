@@ -21,6 +21,7 @@ export default function HomePage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [emailSent, setEmailSent] = useState(false)
 
   function set(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -38,8 +39,9 @@ export default function HomePage() {
     setLoading(true)
     try {
       const { data, error: dbError } = await supabase
-        .from('users').select('id, name').eq('email', form.email).single()
+        .from('users').select('id, name, email_verified').eq('email', form.email).single()
       if (dbError || !data) { setError("We couldn't find that email. Sign up first."); return }
+      if (!data.email_verified) { setError('Please verify your email first — check your inbox.'); return }
       localStorage.setItem('anlan_user_id', data.id)
       localStorage.setItem('anlan_user_name', data.name)
       router.push('/feed')
@@ -58,10 +60,10 @@ export default function HomePage() {
       setError('Please fill in all required fields')
       return
     }
-    // if (!isStudentEmail(form.email)) {
-    //   setError('Please use your university email (e.g. .edu, .ac.uk)')
-    //   return
-    // }
+    if (!isStudentEmail(form.email)) {
+      setError('Please use your university email (e.g. .edu, .ac.uk)')
+      return
+    }
     setLoading(true)
     try {
       const { data, error: dbError } = await supabase
@@ -70,6 +72,7 @@ export default function HomePage() {
           name: form.name, email: form.email, gender: form.gender,
           want_to_date: form.want_to_date, phone: form.phone,
           schedule_text: form.schedule_text || null, campus: form.campus,
+          email_verified: false,
         })
         .select('id').single()
       if (dbError) {
@@ -77,9 +80,13 @@ export default function HomePage() {
         else setError('Sign up failed. Try again.')
         return
       }
-      localStorage.setItem('anlan_user_id', data.id)
-      localStorage.setItem('anlan_user_name', form.name)
-      router.push('/feed')
+      // Send verification email
+      await fetch('/api/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: data.id, email: form.email, name: form.name }),
+      })
+      setEmailSent(true)
     } catch { setError('Network error. Check your connection.') }
     finally { setLoading(false) }
   }
@@ -97,113 +104,130 @@ export default function HomePage() {
           <p className="text-sm text-[#9b9590] mt-1">your crush is probably already here 👀</p>
         </div>
 
-        {/* Tab switcher */}
-        <div className="flex bg-[#eeeae4] rounded-xl p-1 mb-6">
-          {(['signup', 'login'] as Mode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => switchMode(m)}
-              className={`flex-1 py-2 text-sm rounded-lg font-medium transition-all duration-200 ${
-                mode === m ? 'bg-white text-[#111] shadow-sm' : 'text-[#9b9590]'
-              }`}
-            >
-              {m === 'signup' ? 'I\'m new here' : 'Welcome back'}
-            </button>
-          ))}
-        </div>
-
-        {/* Login */}
-        {mode === 'login' && (
-          <form onSubmit={handleLogin} className="space-y-3 animate-fade-in">
-            <Field label="Email">
-              <input
-                type="email" placeholder="your@email.com" value={form.email}
-                onChange={(e) => set('email', e.target.value)} autoFocus
-                className={inputCls}
-              />
-            </Field>
-            {error && <ErrorMsg>{error}</ErrorMsg>}
-            <Btn loading={loading} label="let me in →" />
-          </form>
+        {/* Email sent state */}
+        {emailSent && (
+          <div className="text-center animate-fade-in">
+            <div className="text-5xl mb-4">📬</div>
+            <h2 className="text-lg font-semibold text-[#111] mb-2">check your inbox</h2>
+            <p className="text-sm text-[#9b9590] leading-relaxed mb-6">
+              we sent a verification link to<br />
+              <span className="font-medium text-[#6b6760]">{form.email}</span>
+            </p>
+            <p className="text-xs text-[#c5c0bb]">click the link to activate your account</p>
+          </div>
         )}
 
-        {/* Signup */}
-        {mode === 'signup' && (
-          <form onSubmit={handleSignup} className="space-y-3 animate-fade-in">
-            <Field label="what do people call you" required>
-              <input
-                type="text" placeholder="your name" value={form.name}
-                onChange={(e) => set('name', e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="uni email" required>
-              <input
-                type="email" placeholder="you@university.edu" value={form.email}
-                onChange={(e) => set('email', e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="i am" required>
-              <div className="flex gap-2">
-                {['Man', 'Woman', 'Non-binary'].map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => set('gender', g)}
-                    className={`flex-1 py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                      form.gender === g
-                        ? 'bg-[#111] text-white border-[#111]'
-                        : 'bg-white text-[#6b6760] border-[#e8e6e1] hover:border-[#111]'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <Field label="i'm into" required>
-              <div className="flex gap-2">
-                {['Men', 'Women', 'Non-binary'].map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setForm(f => ({
-                      ...f,
-                      want_to_date: f.want_to_date.includes(g)
-                        ? f.want_to_date.filter(x => x !== g)
-                        : [...f.want_to_date, g]
-                    }))}
-                    className={`flex-1 py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                      form.want_to_date.includes(g)
-                        ? 'bg-[#111] text-white border-[#111]'
-                        : 'bg-white text-[#6b6760] border-[#e8e6e1] hover:border-[#111]'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <Field label="phone" required hint="we'll text you when it's mutual 🍁">
-              <input
-                type="tel" placeholder="+1 (555) 000-0000" value={form.phone}
-                onChange={(e) => set('phone', e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-            <div className="flex items-center gap-2 bg-[#f0ede8] rounded-xl px-4 py-3">
-              <span className="text-sm">✉️</span>
-              <span className="text-xs text-[#6b6760]">connect your email later to find people you already vibe with</span>
+        {/* Tab switcher + forms */}
+        {!emailSent && (
+          <>
+            <div className="flex bg-[#eeeae4] rounded-xl p-1 mb-6">
+              {(['signup', 'login'] as Mode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => switchMode(m)}
+                  className={`flex-1 py-2 text-sm rounded-lg font-medium transition-all duration-200 ${
+                    mode === m ? 'bg-white text-[#111] shadow-sm' : 'text-[#9b9590]'
+                  }`}
+                >
+                  {m === 'signup' ? 'I\'m new here' : 'Welcome back'}
+                </button>
+              ))}
             </div>
-            {error && <ErrorMsg>{error}</ErrorMsg>}
-            <Btn loading={loading} label="shoot your shot →" />
-          </form>
-        )}
 
-        <p className="text-center text-xs text-[#c5c0bb] mt-6 leading-relaxed">
-          no pics. no followers. just vibes.<br />only matches if it&apos;s mutual 🤝
-        </p>
+            {/* Login */}
+            {mode === 'login' && (
+              <form onSubmit={handleLogin} className="space-y-3 animate-fade-in">
+                <Field label="Email">
+                  <input
+                    type="email" placeholder="your@email.com" value={form.email}
+                    onChange={(e) => set('email', e.target.value)} autoFocus
+                    className={inputCls}
+                  />
+                </Field>
+                {error && <ErrorMsg>{error}</ErrorMsg>}
+                <Btn loading={loading} label="let me in →" />
+              </form>
+            )}
+
+            {/* Signup */}
+            {mode === 'signup' && (
+              <form onSubmit={handleSignup} className="space-y-3 animate-fade-in">
+                <Field label="what do people call you" required>
+                  <input
+                    type="text" placeholder="your name" value={form.name}
+                    onChange={(e) => set('name', e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="uni email" required>
+                  <input
+                    type="email" placeholder="you@university.edu" value={form.email}
+                    onChange={(e) => set('email', e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="i am" required>
+                  <div className="flex gap-2">
+                    {['Man', 'Woman', 'Non-binary'].map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => set('gender', g)}
+                        className={`flex-1 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                          form.gender === g
+                            ? 'bg-[#111] text-white border-[#111]'
+                            : 'bg-white text-[#6b6760] border-[#e8e6e1] hover:border-[#111]'
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="i'm into" required>
+                  <div className="flex gap-2">
+                    {['Men', 'Women', 'Non-binary'].map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setForm(f => ({
+                          ...f,
+                          want_to_date: f.want_to_date.includes(g)
+                            ? f.want_to_date.filter(x => x !== g)
+                            : [...f.want_to_date, g]
+                        }))}
+                        className={`flex-1 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                          form.want_to_date.includes(g)
+                            ? 'bg-[#111] text-white border-[#111]'
+                            : 'bg-white text-[#6b6760] border-[#e8e6e1] hover:border-[#111]'
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="phone" required hint="we'll text you when it's mutual 🍁">
+                  <input
+                    type="tel" placeholder="+1 (555) 000-0000" value={form.phone}
+                    onChange={(e) => set('phone', e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <div className="flex items-center gap-2 bg-[#f0ede8] rounded-xl px-4 py-3">
+                  <span className="text-sm">✉️</span>
+                  <span className="text-xs text-[#6b6760]">connect your email later to find people you already vibe with</span>
+                </div>
+                {error && <ErrorMsg>{error}</ErrorMsg>}
+                <Btn loading={loading} label="shoot your shot →" />
+              </form>
+            )}
+
+            <p className="text-center text-xs text-[#c5c0bb] mt-6 leading-relaxed">
+              no pics. no followers. just vibes.<br />only matches if it&apos;s mutual 🤝
+            </p>
+          </>
+        )}
       </div>
     </main>
   )
