@@ -40,9 +40,12 @@ export async function POST(req: NextRequest) {
   const verifyUrl = `${appUrl}/verify?token=${token}`
 
   const resend = new Resend(resendKey)
+  // Without a verified domain, Resend can only deliver to the account owner's email.
+  // Remove this override once a custom domain is added in Resend.
+  const RESEND_OWNER_EMAIL = 'devonxiong@outlook.com'
   const { error } = await resend.emails.send({
     from: 'onboarding@resend.dev',
-    to: [email],
+    to: [RESEND_OWNER_EMAIL],
     subject: 'Verify your Maple account 🍁',
     html: `
       <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:400px;margin:0 auto;padding:40px 24px;background:#f8f7f4;">
