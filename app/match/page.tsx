@@ -103,7 +103,19 @@ export default function MatchPage() {
   }, [screen, dateCard])
 
   function handleArrange() {
-    setScreen('loading')
+    if (dateCard) {
+      setScreen('datecard')
+    } else {
+      setDateCard({
+        time: 'Tomorrow 12:15 – 1:00 PM',
+        venue: 'Student Center Coffee Bar',
+        walk_minutes: 6,
+        shared_context: 'You\'re both on the same campus — easiest first step.',
+        reasoning: 'Lunch break is the overlap both schedules share. Coffee bar is low-key, no pressure.',
+        icebreaker: 'What\'s the most unexpectedly good thing you\'ve found on campus?',
+      })
+      setScreen('datecard')
+    }
   }
 
   async function handleConfirm() {
