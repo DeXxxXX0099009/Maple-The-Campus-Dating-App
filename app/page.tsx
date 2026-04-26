@@ -21,6 +21,10 @@ export default function HomePage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [pendingUserId, setPendingUserId] = useState('')
+  const [otp, setOtp] = useState('')
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [otpError, setOtpError] = useState('')
 
   function set(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -29,6 +33,8 @@ export default function HomePage() {
   function switchMode(m: Mode) {
     setMode(m)
     setError('')
+    setPendingUserId('')
+    setOtp('')
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -38,8 +44,9 @@ export default function HomePage() {
     setLoading(true)
     try {
       const { data, error: dbError } = await supabase
-        .from('users').select('id, name').eq('email', form.email).single()
+        .from('users').select('id, name, email_verified').eq('email', form.email).single()
       if (dbError || !data) { setError("We couldn't find that email. Sign up first."); return }
+      if (!data.email_verified) { setError('Please verify your email first — check your inbox for the code.'); return }
       localStorage.setItem('anlan_user_id', data.id)
       localStorage.setItem('anlan_user_name', data.name)
       router.push('/feed')
@@ -75,7 +82,7 @@ export default function HomePage() {
           name: form.name, email: form.email, gender: form.gender,
           want_to_date: form.want_to_date, phone: '+1' + form.phone.replace(/\D/g, ''),
           schedule_text: form.schedule_text || null, campus: form.campus,
-          email_verified: true,
+          email_verified: false,
         })
         .select('id').single()
       if (dbError) {
@@ -83,17 +90,44 @@ export default function HomePage() {
         else setError('Sign up failed. Try again.')
         return
       }
-      // Send welcome email (best-effort, don't gate on it)
-      fetch('/api/verify-email', {
+      await fetch('/api/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: data.id, email: form.email, name: form.name }),
-      }).catch(() => {})
-      localStorage.setItem('anlan_user_id', data.id)
-      localStorage.setItem('anlan_user_name', form.name)
-      router.push('/feed')
+      })
+      setPendingUserId(data.id)
     } catch { setError('Network error. Check your connection.') }
     finally { setLoading(false) }
+  }
+
+  async function handleOtpSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setOtpError('')
+    if (otp.length !== 6) { setOtpError('Enter the 6-digit code from your email'); return }
+    setOtpLoading(true)
+    try {
+      const res = await fetch('/api/verify-email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: pendingUserId, code: otp }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setOtpError('Wrong code — double-check your email'); return }
+      localStorage.setItem('anlan_user_id', pendingUserId)
+      localStorage.setItem('anlan_user_name', json.name)
+      router.push('/feed')
+    } catch { setOtpError('Network error. Try again.') }
+    finally { setOtpLoading(false) }
+  }
+
+  async function resendCode() {
+    setOtpError('')
+    await fetch('/api/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: pendingUserId, email: form.email, name: form.name }),
+    })
+    setOtpError('New code sent ✓')
   }
 
   return (
@@ -109,8 +143,51 @@ export default function HomePage() {
           <p className="text-sm text-[#9b9590] mt-1">your crush is probably already here 👀</p>
         </div>
 
+        {/* OTP verification screen */}
+        {pendingUserId && (
+          <div className="animate-fade-in">
+            <div className="text-center mb-6">
+              <div className="text-4xl mb-3">📬</div>
+              <h2 className="text-lg font-semibold text-[#111] mb-1">check your inbox</h2>
+              <p className="text-sm text-[#9b9590] leading-relaxed">
+                we sent a 6-digit code to<br />
+                <span className="font-medium text-[#6b6760]">{form.email}</span>
+              </p>
+            </div>
+            <form onSubmit={handleOtpSubmit} className="space-y-3">
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="_ _ _ _ _ _"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                autoFocus
+                className="w-full bg-white border border-[#e8e6e1] rounded-xl px-4 py-4 text-2xl text-center font-semibold tracking-[0.4em] text-[#111] placeholder:text-[#ddd] focus:outline-none focus:border-[#111] transition-colors"
+              />
+              {otpError && (
+                <p className={`text-sm text-center py-1 ${otpError.includes('✓') ? 'text-emerald-500' : 'text-red-500'}`}>
+                  {otpError}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={otpLoading || otp.length !== 6}
+                className="w-full bg-[#111] text-white rounded-xl py-3.5 text-sm font-medium disabled:opacity-40 active:scale-[0.98] transition-transform"
+              >
+                {otpLoading ? 'Verifying...' : 'verify →'}
+              </button>
+            </form>
+            <p className="text-center text-xs text-[#c5c0bb] mt-4">
+              didn&apos;t get it?{' '}
+              <button onClick={resendCode} className="underline hover:text-[#9b9590]">resend code</button>
+              {' '}· check spam too
+            </p>
+          </div>
+        )}
+
         {/* Tab switcher + forms */}
-        {(
+        {!pendingUserId && (
           <>
             <div className="flex bg-[#eeeae4] rounded-xl p-1 mb-6">
               {(['signup', 'login'] as Mode[]).map((m) => (
@@ -284,27 +361,5 @@ function MapleIcon() {
       className="w-16 h-16 object-contain"
       style={{ mixBlendMode: 'multiply' }}
     />
-  )
-}
-
-function _OldMapleIconUnused() {
-  return (
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-16 h-16">
-      <path
-        d="M32,3 L31,10 L22,8 L26,14 L6,22 L19,26 L16,33 L24,32 L27,44 L29,44 L29,54 L35,54 L35,44 L37,44 L40,32 L48,33 L45,26 L58,22 L38,14 L42,8 L33,10 Z"
-        fill="#D52B1E"
-      />
-      <circle cx="25" cy="27" r="2.2" fill="white" />
-      <circle cx="39" cy="27" r="2.2" fill="white" />
-      <circle cx="25.8" cy="27.8" r="1" fill="#1a1a1a" />
-      <circle cx="39.8" cy="27.8" r="1" fill="#1a1a1a" />
-      <path
-        d="M23,35 Q32,43 41,35"
-        stroke="white"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
   )
 }
