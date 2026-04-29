@@ -376,6 +376,12 @@ export default function MatchPage() {
 
   // ── Confirmed ─────────────────────────────────────────────────────────────
   if (screen === 'confirmed') {
+    const mapsUrl = dateCard && 'maps_url' in dateCard && dateCard.maps_url
+      ? dateCard.maps_url as string
+      : dateCard
+        ? `https://maps.google.com/?q=${encodeURIComponent(dateCard.venue + ' Claremont CA')}`
+        : null
+
     return (
       <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-[#f8f7f4]">
         <div className="w-full max-w-[360px] text-center animate-scale-in">
@@ -384,7 +390,24 @@ export default function MatchPage() {
           {dateCard && (
             <p className="text-sm text-[#9b9590] mb-1">{dateCard.time} · {dateCard.venue}</p>
           )}
-          <p className="text-xs text-[#c5c0bb] mb-10">deets are in your iMessage. don&apos;t be late 😤</p>
+          <p className="text-xs text-[#c5c0bb] mb-8">both of you confirmed. don&apos;t be late 😤</p>
+
+          {/* Navigation prompt */}
+          {mapsUrl && (
+            <div className="bg-white border border-[#e8e6e1] rounded-2xl p-4 mb-4 text-left">
+              <p className="text-sm font-medium text-[#111] mb-1">want directions? 🗺️</p>
+              <p className="text-xs text-[#9b9590] mb-3">open Google Maps and navigate straight there</p>
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full bg-[#111] text-white rounded-xl py-3 text-sm font-medium active:scale-[0.98] transition-transform"
+              >
+                <span>📍</span> open in Google Maps
+              </a>
+            </div>
+          )}
+
           <button
             onClick={() => router.push('/feed')}
             className="w-full border border-[#e8e6e1] rounded-xl py-3 text-sm text-[#6b6760] active:scale-[0.98] transition-transform"
