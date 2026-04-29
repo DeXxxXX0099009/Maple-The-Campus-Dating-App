@@ -79,20 +79,41 @@ export default function FeedPage() {
     router.push('/')
   }
 
-  // Handle Spotify OAuth callback (token in URL hash)
+  // Handle Spotify OAuth callback (PKCE — code in URL query params)
   useEffect(() => {
-    const hash = window.location.hash
-    if (!hash.includes('access_token')) return
-    const params = new URLSearchParams(hash.slice(1))
-    const token = params.get('access_token')
-    if (!token) return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    if (!code || state !== 'spotify') return
     window.history.replaceState(null, '', window.location.pathname)
 
     const userId = localStorage.getItem('anlan_user_id')
-    if (!userId) return
+    const verifier = localStorage.getItem('spotify_verifier')
+    if (!userId || !verifier) return
+    localStorage.removeItem('spotify_verifier')
 
-    async function saveSpotify() {
+    const clientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID!
+    const redirectUri = window.location.origin + '/feed'
+
+    async function exchangeAndSave() {
       try {
+        // Exchange code for token
+        const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'authorization_code',
+            code: code!,
+            redirect_uri: redirectUri,
+            client_id: clientId,
+            code_verifier: verifier!,
+          }),
+        })
+        const tokenData = await tokenRes.json()
+        const token = tokenData.access_token
+        if (!token) { showToast('Spotify auth failed'); return }
+
+        // Fetch top music data
         const [artistsRes, tracksRes] = await Promise.all([
           fetch('https://api.spotify.com/v1/me/top/artists?limit=10&time_range=medium_term', {
             headers: { Authorization: `Bearer ${token}` },
@@ -102,7 +123,7 @@ export default function FeedPage() {
           }),
         ])
         const [artistsData, tracksData] = await Promise.all([artistsRes.json(), tracksRes.json()])
-        const top_artists = (artistsData.items ?? []).map((a: { name: string; genres: string[] }) => a.name)
+        const top_artists = (artistsData.items ?? []).map((a: { name: string }) => a.name)
         const top_tracks = (tracksData.items ?? []).map((t: { name: string; artists: { name: string }[] }) => `${t.name} — ${t.artists[0]?.name}`)
         const genres = [...new Set((artistsData.items ?? []).flatMap((a: { genres: string[] }) => a.genres))].slice(0, 8)
         await supabase.from('users').update({ spotify_interests: { top_artists, top_tracks, genres } }).eq('id', userId)
@@ -112,7 +133,7 @@ export default function FeedPage() {
         showToast('Failed to connect Spotify')
       }
     }
-    saveSpotify()
+    exchangeAndSave()
   }, [])
 
   // Bell: geolocation → update user_presence every 30s
@@ -329,12 +350,29 @@ export default function FeedPage() {
     }
   }
 
-  function connectSpotify() {
+  async function connectSpotify() {
     const clientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
     if (!clientId) { showToast('Spotify not configured'); return }
-    const redirectUri = encodeURIComponent(window.location.origin + '/feed')
-    const scope = encodeURIComponent('user-top-read')
-    window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=token&redirect_uri=${redirectUri}&scope=${scope}`
+
+    // Generate PKCE code verifier + challenge
+    const verifier = Array.from(crypto.getRandomValues(new Uint8Array(64)))
+      .map(b => b.toString(16).padStart(2, '0')).join('')
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
+    const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+    localStorage.setItem('spotify_verifier', verifier)
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      redirect_uri: window.location.origin + '/feed',
+      scope: 'user-top-read',
+      state: 'spotify',
+      code_challenge_method: 'S256',
+      code_challenge: challenge,
+    })
+    window.location.href = `https://accounts.spotify.com/authorize?${params}`
   }
 
   function connectEmail() {
