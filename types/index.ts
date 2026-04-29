@@ -1,3 +1,9 @@
+export interface SpotifyInterests {
+  top_artists: string[]
+  top_tracks: string[]
+  genres: string[]
+}
+
 export interface User {
   id: string
   email: string
@@ -7,6 +13,7 @@ export interface User {
   phone: string
   schedule_text: string | null
   campus: string | null
+  spotify_interests: SpotifyInterests | null
   created_at: string
 }
 
