@@ -311,7 +311,7 @@ export default function MatchPage() {
                   <p className="text-xs text-[#9b9590] mb-0.5">Where</p>
                   <p className="text-sm font-semibold text-[#111]">{dateCard.venue}</p>
                   <p className="text-xs text-[#9b9590]">~{dateCard.walk_minutes} min walk each</p>
-                  {'maps_url' in dateCard && dateCard.maps_url && (
+                  {dateCard.maps_url && (
                     <a
                       href={dateCard.maps_url as string}
                       target="_blank"
@@ -323,7 +323,7 @@ export default function MatchPage() {
                   )}
                 </div>
               </div>
-              {'static_map' in dateCard && dateCard.static_map && (
+              {dateCard.static_map && (
                 <img
                   src={dateCard.static_map as string}
                   alt="venue map"
@@ -376,7 +376,7 @@ export default function MatchPage() {
 
   // ── Confirmed ─────────────────────────────────────────────────────────────
   if (screen === 'confirmed') {
-    const mapsUrl = dateCard && 'maps_url' in dateCard && dateCard.maps_url
+    const mapsUrl = dateCard && (dateCard.maps_url || `https://maps.google.com/?q=${encodeURIComponent(dateCard.venue + ' Claremont CA')}`)
       ? dateCard.maps_url as string
       : dateCard
         ? `https://maps.google.com/?q=${encodeURIComponent(dateCard.venue + ' Claremont CA')}`

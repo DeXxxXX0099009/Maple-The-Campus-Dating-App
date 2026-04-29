@@ -53,6 +53,12 @@ export interface DateCard {
   shared_context: string
   reasoning: string
   icebreaker: string
+  // Google Maps fields (optional)
+  address?: string
+  lat?: number
+  lng?: number
+  maps_url?: string
+  static_map?: string
 }
 
 export interface FeedCard {
